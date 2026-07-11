@@ -47,3 +47,9 @@ venv/
 
 # Разрешаем пример окружения
 !.env.example
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
