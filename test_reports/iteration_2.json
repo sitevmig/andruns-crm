@@ -1,0 +1,47 @@
+{
+  "summary": "Regression backend test after removal of emergentintegrations and jq from backend/requirements.txt. Backend started cleanly with no ImportError. Full pytest suite (45 tests) passes 100%. DNC endpoint now correctly accepts empty {} body, missing body, and body with only 'reason' (all return 200). XLSX exports (openpyxl) produce valid zip-magic files. Telegram/email mock integrations work without external services.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/organizations/{id}/dnc",
+        "issue": "When called with body {'reason': '...'} the response object does not echo back the 'reason' field (returns None). The value is likely stored on the DNC log but not on the org document; minor UX / API-contract inconsistency — clients cannot verify reason was captured without a separate GET."
+      },
+      {
+        "endpoint": "POST /api/auth/login (brute-force lockout)",
+        "issue": "Lockout identifier is `ip:email`; K8s ingress uses ≥2 pod IPs so each source IP builds its own counter. Not a security hole but delays lockout (still detected after ~20 attempts). Consider per-email or X-Forwarded-For normalization (unchanged from iteration_1)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "OPTIONAL (minor): include 'reason' in the JSON response of POST /organizations/{id}/dnc, or document that reason is stored only in the dnc log.",
+    "Deployment on Render should now be unblocked — verified backend imports and boots without emergentintegrations/jq. Recommend a smoke test on Render post-deploy hitting /api/auth/login, /api/dashboard, /api/export/all."
+  ],
+  "critical_code_review_comments": [
+    "backend/requirements.txt cleanup verified: no remaining references to emergentintegrations or jq in any backend/*.py or routers/*.py. grep is clean.",
+    "server.py imports cleanly under python 3.11 with the trimmed requirements.txt (verified via direct import).",
+    "backend/worker.py process_queue still lacks atomic findAndModify — carry-over from iteration_1; two concurrent processors (bg loop + manual /queue/process) can still race under real (non-mock) send. Fine for MOCKED demo.",
+    "routers/organizations.py — build_query uses raw user input in $regex without re.escape() (carry-over). Minor injection/DoS risk with metacharacters.",
+    "routers/imports.py — no file-size or row-cap on /import/upload (carry-over). A malicious multi-MB XLSX can OOM the backend on Render's small instance."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% (45/45 pytest cases)",
+    "frontend": "not tested (per review request: backend-only)"
+  },
+  "test_credentials": "admin@crm.ru / Admin123!  (also manager2@crm.ru, manager3@crm.ru — same password). Source: /app/memory/test_credentials.md.",
+  "seed_data_creation": "None manually. seed_data.py creates 3 admins + 10 demo orgs + 2 templates on startup. Tests use TEST_-prefixed data with cleanup.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: `cd /app && python -m pytest backend/tests/backend_test.py -v --junitxml=/app/test_reports/pytest/pytest_results.xml`. All 45 tests currently green. Suite covers auth (incl. brute-force), dashboard, organizations (list/meta/status/dnc/bulk), imports (CSV upload/analyze/confirm + dedup + DNC preservation + phone normalization), templates CRUD+preview, queue (enqueue/process MOCK/stop/resume/clear/retry), replies (simulate), duplicates, exports (xlsx), backups (create/list/download/restore-guard), settings, admins CRUD, telegram/email mock integrations. Backend has NO emergentintegrations/jq imports — confirmed via grep. Regression note: if future changes touch routers/organizations.py, /bulk/* endpoints MUST remain declared before /{org_id}/* (see iteration_1 rca).",
+  "rca_of_the_issue": "N/A — no new bugs. Regression check after dependency removal (emergentintegrations, jq) confirms both packages were unused: no import references in code (grep clean), backend boots without ImportError (verified via supervisor log and direct `import server`), and full functional pytest suite is green (45/45). Deployment to Render should proceed."
+}
