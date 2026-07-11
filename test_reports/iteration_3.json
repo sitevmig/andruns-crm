@@ -1,0 +1,49 @@
+{
+  "summary": "Frontend regression test after downgrading date-fns 4.1.0 -> 3.6.0 (for react-day-picker@8.10.1 peer-dep compatibility, no --legacy-peer-deps needed for Render build) and adding engines.node=20. All critical flows verified via Playwright on the public REACT_APP_BACKEND_URL. Zero console errors, zero page errors, all pages render, dates display correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Настройки",
+        "issues": [
+          "Only 2 of 6 settings tabs expose data-testid (tab-admins, tab-telegram). Missing: tab-general (Общие), tab-mailing (Рассылки), tab-email (Email), tab-security (Безопасность). Functionality unaffected — click via role='tab' works — but hurts test automation coverage."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_3.json"
+  ],
+  "action_items": [
+    "OPTIONAL: add data-testid to remaining Settings tabs (tab-general, tab-mailing, tab-email, tab-security) for test parity with tab-admins/tab-telegram.",
+    "Render deployment for frontend should now be unblocked — date-fns@3.6.0 resolves peer-dep conflict with react-day-picker@8.10.1 without --legacy-peer-deps; engines.node ^20 documented in package.json."
+  ],
+  "critical_code_review_comments": [
+    "date-fns is NOT imported anywhere in /app/frontend/src (grep confirmed empty). Downgrade is safe: only react-day-picker (calendar) and internal transitives consume it. StatusBadge.jsx uses native Date.toLocaleString (verified in review request). No functional regression possible from this dependency change.",
+    "frontend/.env: REACT_APP_BACKEND_URL correctly points to production preview URL — no hardcoded backend URLs in src (per review request scope, not exhaustively re-audited)."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "not tested (per review: frontend only)",
+    "frontend": "100% - all 6 review scenarios pass"
+  },
+  "test_credentials": "admin@crm.ru / Admin123! (verified working; source /app/memory/test_credentials.md)",
+  "seed_data_creation": "None — used existing seeded 10 demo organizations from backend seed_data.py",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression suite for date-fns 3.6.0 downgrade: (1) Login admin@crm.ru/Admin123! via [data-testid=login-*] -> dashboard renders. (2) All 10 sidebar items [data-testid=nav-<Russian label>] navigate without white screens. Note: nav testids use RUSSIAN labels (nav-Организации, nav-Настройки), NOT english slugs. (3) [data-testid=org-name-<id>] click opens [data-testid=org-drawer] with 4 tabs [tab-info, tab-messages, tab-changes, tab-actions]. (4) Dates render as DD.MM.YYYY, HH:MM (e.g. '11.07.2026, 17:19') via native Date.toLocaleString — not date-fns. (5) Settings has only tab-admins + tab-telegram data-testids; other tabs accessible via role=tab name=<label>. Zero console errors observed.",
+  "regression_scenarios_verified": [
+    "Login form (login-email/login-password/login-submit) -> dashboard 200 OK",
+    "Dashboard: stats cards (10 организаций, 1 новых, 2 готово, 3 отправлено сегодня, 1 ответили…) + Воронка bars render",
+    "Sidebar navigation: Главная/Организации/Импорт/Очередь/Шаблоны/Ответы/Дубли/Экспорт/Журнал/Настройки all mount OK (body length > 4500 chars each; no error boundary)",
+    "Организации: table loads 10 rows, filters (status/category/city/email/tg/dnc) and search-input visible, saved-filter chips (new_leads, ready_email, ready_telegram, replied, interested, rejected, errors, in_progress, dnc) present",
+    "Org Drawer: opens on org-name click; tabs Сведения/Сообщения/Изменения/Действия all clickable; dates render (Импортирована 11.07.2026, 17:19)",
+    "Настройки: tab-admins shows admin creation dates (11.07.2026 repeatedly); tab-telegram shows demo-mode status; Общие/Рассылки/Email/Безопасность tabs visible in DOM",
+    "Console: 0 errors, 0 pageerrors across full flow"
+  ]
+}
