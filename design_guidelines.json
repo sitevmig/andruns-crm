@@ -1,0 +1,110 @@
+{
+  "theme": "light",
+  "typography": {
+    "family": "IBM Plex Sans, sans-serif",
+    "rationale": "High legibility, strict business tone, excellent for numbers and dense Russian text.",
+    "headings": {
+      "sizes": "text-lg to text-2xl maximum",
+      "weight": "font-semibold",
+      "tracking": "tracking-tight"
+    },
+    "body": {
+      "sizes": "text-sm",
+      "weight": "font-normal"
+    }
+  },
+  "colors": {
+    "archetype": "Swiss & High-Contrast (Strict)",
+    "palette": {
+      "background": "#F4F4F5",
+      "surface": "#FFFFFF",
+      "primary": "#005BB5",
+      "text": {
+        "primary": "#18181B",
+        "secondary": "#52525B"
+      },
+      "border": "#E4E4E7",
+      "status": {
+        "success": "#16A34A",
+        "warning": "#D97706",
+        "danger": "#DC2626",
+        "info": "#0284C7"
+      }
+    }
+  },
+  "visual_enhancers": {
+    "borders": "1px solid border-zinc-200. Dense grid borders for tables.",
+    "shadows": "Strictly no soft drop shadows. Use border for separation. Floating menus get shadow-md.",
+    "radii": "Max rounded-sm (2px to 4px) to keep a sharp, serious look."
+  },
+  "component_name": {
+    "table": "Dense DataTable (Shadcn customized). px-2 py-1 padding. Sticky header. Hover row bg-zinc-50/50.",
+    "button": "Flat, rounded-sm, primary color bg-blue-600 hover:bg-blue-700. h-8 for dense actions.",
+    "input": "h-8, rounded-sm, sharp focus ring-2 ring-blue-500.",
+    "badge": "Subtle background (bg-zinc-100) with solid text. No glossy effects."
+  },
+  "grids": {
+    "dashboard": "grid-cols-1 md:grid-cols-4 lg:grid-cols-6 gap-4",
+    "forms": "grid-cols-1 md:grid-cols-2 gap-4"
+  },
+  "layouts": {
+    "general": "Sidebar navigation (w-64) + Topbar (h-14) + Main Content Area.",
+    "spacing": "Dense. Use p-4 for cards/containers, but p-1/p-2 for internal data elements."
+  },
+  "motion": {
+    "philosophy": "Functional only. No parallax, no delayed entrances.",
+    "transitions": "Only hover and focus states (150ms). Use basic transition-colors."
+  },
+  "accessibility": {
+    "contrast": "Strict WCAG AA. High contrast text.",
+    "data_testid": "MANDATORY on all actionable elements (buttons, inputs, links).",
+    "language": "Russian (ru)"
+  },
+  "media": {
+    "3d_libraries": "None. Project requires 'no unnecessary visual effects'.",
+    "image_urls": {
+      "login_background": {
+        "url": "https://images.unsplash.com/photo-1483366774565-c783b9f70e2c?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwxfHxtaW5pbWFsJTIwYWJzdHJhY3QlMjBhcmNoaXRlY3R1cmUlMjBsaWdodHxlbnwwfHx8fDE3ODM3ODk3ODB8MA&ixlib=rb-4.1.0&q=85",
+        "category": "Login Page",
+        "description": "Minimal abstract architecture, to be used as a subtle background for the login screen. It provides a strict, professional vibe."
+      }
+    }
+  },
+  "instructions_to_main_agent": [
+    "Design an internal CRM targeted for the Russian market. ALL TEXT, mock data, and labels must be in Russian.",
+    "Style: Strict business desktop. Enforce a light theme. Use zinc-50 as app background and white for cards/tables.",
+    "Density: This is a data-heavy application. Tables must be extremely dense (Compact Mode). Override Shadcn's default table padding to `px-2 py-1` or `h-8`.",
+    "Borders/Corners: Use flat aesthetics. Restrict border-radius to `rounded-sm`. Remove soft drop shadows and replace with 1px `border-zinc-200` lines.",
+    "Navigation: Implement a persistent left sidebar (Sidebar component) with navigation to: Главная, Организации, Импорт, Очередь, Шаблоны, Ответы, Дубли, Экспорт, Журнал, Настройки.",
+    "Pages required: Login, Dashboard, Organizations table, Import wizard (with step-by-step UI), Queue management, Templates editor, Settings.",
+    "Interactive Elements: Add `data-testid` to all inputs, buttons, and rows.",
+    "Icons: Use Phosphor Icons or Lucide with small size (size=16) to maintain density.",
+    "Ensure 'Stop' (Остановить рассылку) is styled defensively (e.g., destructive variant with confirmation)."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "You MUST NOT apply universal transition. Eg: transition: all. This results in breaking transforms. Always add transitions for specific interactive elements like button, input excluding transforms.",
+    "You MUST NOT center align the app container, ie do not add .App { text-align: center; } in the css file. This disrupts the human natural reading flow of text.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Main agent relies on these image URLs. Missing categories (especially sponsor logos) = main agent will use placeholder text which is FORBIDDEN.",
+    "Prioritize using pre-existing components from src/components/ui when applicable.",
+    "Create new components that match the style and conventions of existing components when needed.",
+    "Examine existing components to understand the project's component patterns before creating new ones.",
+    "Use sonner for toasts. Sonner component are located in /app/src/components/ui/sonner.tsx."
+  ],
+  "GENERAL_UI_UX_DESIGN_GUIDELINES": [
+    "Maintain high contrast ratios for readability (APCA preferred over WCAG).",
+    "Hover states must always be explicitly defined.",
+    "Ensure focus states are highly visible for keyboard navigation.",
+    "Do not use transparent backgrounds over content; use solid colors or heavy blurs.",
+    "All interactive elements must include a data-testid attribute to facilitate robust automated testing."
+  ]
+}
