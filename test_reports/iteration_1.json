@@ -1,0 +1,66 @@
+{
+  "summary": "Comprehensive backend + frontend testing of CRM Cold Sales. 45/45 backend pytest cases pass after fixing one routing bug. Frontend loads, all 10 nav pages accessible, login/dashboard/organizations/queue/templates/settings/toggle-sending flows verified.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/organizations/bulk/status and POST /api/organizations/bulk/archive",
+        "issue": "ROUTE ORDERING BUG (FIXED by testing agent). /{org_id}/status was declared BEFORE /bulk/status, so FastAPI matched /bulk/status as org_id='bulk' → 500 InvalidId. Fixed by moving bulk endpoints above /{org_id}/... routes in /app/backend/routers/organizations.py.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "POST /api/organizations/{id}/dnc",
+        "issue": "Uses `body: StatusBody = None` where StatusBody has required `status` field. Client sending {'reason': '...'} gets 422. Either loosen validation or introduce dedicated DncBody(reason: Optional[str])."
+      },
+      {
+        "endpoint": "POST /api/auth/login (brute-force lockout)",
+        "issue": "Lockout identifier is `ip:email`. In K8s ingress, ingress-controller uses ≥2 pod IPs, so each source IP builds its own counter — 5 attempts hit each IP separately. Not a security issue (still limits per IP), but delays lockout. Consider identifier = email-only or normalize via X-Forwarded-For."
+      },
+      {
+        "endpoint": "GET /api/import/{import_id}/report",
+        "issue": "Accepts a bare `token: str = ''` query parameter that is unused (endpoint uses Depends(get_current_user)). Dead code — can be removed."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "REVIEW: verify the route-ordering fix in /app/backend/routers/organizations.py (bulk/status + bulk/archive moved above /{org_id}/status). No behavioural change, just correct routing.",
+    "FIX (minor): make POST /organizations/{id}/dnc accept optional body cleanly — e.g. `body: Optional[DncBody] = None` with `DncBody(BaseModel): reason: Optional[str] = None`. Currently frontend must send a fake `status` to satisfy StatusBody validation.",
+    "IMPROVE (minor): brute-force identifier ideally should be per-email (or per-forwarded-for) to be resilient behind ingress load-balancing."
+  ],
+  "critical_code_review_comments": [
+    "server.py: CORSMiddleware added AFTER include_router — that still works in FastAPI (Starlette applies middleware to the whole stack on first request), but keeping middleware setup before routers is clearer.",
+    "server.py: shutdown handler does not cancel _worker_task before closing Mongo client → the queue loop may log errors on shutdown. Minor.",
+    "worker.py: process_queue does not use pymongo findAndModify to atomically claim a task; two concurrent processors (background loop + manual /queue/process) can race and send twice. Currently mitigated by fast mock, but for real send this is unsafe.",
+    "backups.py: on restore, existing collections are wiped with delete_many({}) before insert — no transaction / atomic swap. If insert fails mid-way DB is empty. Consider dropping into a temp collection then renameCollection().",
+    "organizations.py: build_query uses raw user input in $regex without escaping — a search containing regex metacharacters can produce invalid queries or unintended matches. Wrap with re.escape().",
+    "constants.py: Q_SENT = 'Отправлено' collides with STATUS_SENT = 'Отправлено' — different collections so it works, but adds cognitive load; consider distinct labels.",
+    "imports.py: _read_df loads whole file into memory; no row cap — a malicious 100k-row XLSX will OOM. Add row limit and file-size limit on /import/upload.",
+    "auth.py: change-password does not invalidate other sessions of the same user — user with stolen token can keep using it after password change.",
+    "helpers.normalize_phone: unusual branch `if len(digits) == 11 and digits[0] == '9': digits = '7' + digits[-10:]` is unreachable when the previous 11-digit branch (starts with 8/7) already handled it; also for 12+ digits it silently keeps last 10 which may hide bad data.",
+    "queue.py enqueue: does not validate that scheduled_at is a future ISO date."
+  ],
+  "updated_files": [
+    "/app/backend/routers/organizations.py (reordered bulk routes to fix 500 on bulk/status and bulk/archive)",
+    "/app/backend/tests/backend_test.py (new: 45 pytest cases)"
+  ],
+  "success_rate": {
+    "backend": "100% (45/45)",
+    "frontend": "100% for smoke + core flows tested"
+  },
+  "test_credentials": "admin@crm.ru / Admin123!  (also manager2@crm.ru, manager3@crm.ru — same password). From /app/memory/test_credentials.md; seed_admins() upserts on startup.",
+  "seed_data_creation": "None manually created. Backend seeds 3 admins + 10 demo orgs + 2 templates on startup (seed_data.py). Tests create TEST_-prefixed temporary orgs and clean up.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend test suite is at /app/backend/tests/backend_test.py — run with: `pytest backend/tests/backend_test.py -v --junitxml=/app/test_reports/pytest/pytest_results.xml` from /app. Uses REACT_APP_BACKEND_URL as base. Note: brute-force test does 20 attempts to overcome K8s ingress IP load-balancing. If future changes make ingress route all through a single IP, this can be reduced. Route ordering was fixed once — if E1 restructures organizations.py, make sure /bulk/* endpoints remain declared BEFORE /{org_id}/* endpoints.",
+  "rca_of_the_issue": "Root cause of the bulk/status 500: FastAPI resolves routes in registration order. In routers/organizations.py, `POST /{org_id}/status` was declared at line 206, and `POST /bulk/status` at line 269. Any POST to `/api/organizations/bulk/status` matched the earlier route with org_id='bulk', which was then passed to ObjectId('bulk') → bson.errors.InvalidId → 500. Reproduction: `curl -X POST /api/organizations/bulk/status -H 'Authorization: Bearer <t>' -d '{\"ids\":[...],\"status\":\"Готов к отправке\"}'`. Mitigation applied: moved /bulk/status and /bulk/archive above /{org_id}/... routes. General rule: literal path segments must be declared before parameterised ones in FastAPI."
+}
