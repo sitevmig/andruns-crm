@@ -1,4 +1,5 @@
 from bson import ObjectId
+import re
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
@@ -36,6 +37,10 @@ class OrgUpdate(BaseModel):
     next_action_at: Optional[str] = None
 
 
+class DncBody(BaseModel):
+    reason: Optional[str] = None
+
+
 class StatusBody(BaseModel):
     status: str
     reason: Optional[str] = None
@@ -62,13 +67,14 @@ def build_query(params: dict) -> dict:
     q = {}
     search = params.get("search")
     if search:
+        s = re.escape(search)
         q["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"city": {"$regex": search, "$options": "i"}},
-            {"email": {"$regex": search, "$options": "i"}},
-            {"phone": {"$regex": search, "$options": "i"}},
-            {"telegram": {"$regex": search, "$options": "i"}},
-            {"category": {"$regex": search, "$options": "i"}},
+            {"name": {"$regex": s, "$options": "i"}},
+            {"city": {"$regex": s, "$options": "i"}},
+            {"email": {"$regex": s, "$options": "i"}},
+            {"phone": {"$regex": s, "$options": "i"}},
+            {"telegram": {"$regex": s, "$options": "i"}},
+            {"category": {"$regex": s, "$options": "i"}},
         ]
     if params.get("status"):
         q["status"] = params["status"]
@@ -239,11 +245,11 @@ async def set_status(org_id: str, body: StatusBody, user: dict = Depends(get_cur
 
 
 @router.post("/{org_id}/dnc")
-async def mark_dnc(org_id: str, body: StatusBody = None, user: dict = Depends(get_current_user)):
+async def mark_dnc(org_id: str, body: DncBody = DncBody(), user: dict = Depends(get_current_user)):
     await db.organizations.update_one(
         {"_id": ObjectId(org_id)},
         {"$set": {"do_not_contact": True, "status": STATUS_DNC, "updated_at": now_iso(),
-                  "rejection_reason": (body.reason if body else None)}},
+                  "rejection_reason": body.reason}},
     )
     await db.queue.update_many(
         {"org_id": org_id, "status": {"$in": ["Ожидает", "Запланировано"]}},
