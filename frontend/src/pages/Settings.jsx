@@ -97,42 +97,97 @@ const Toggle = ({ label, checked, onChange, testid }) => (
 function TelegramSettings() {
   const [st, setSt] = useState(null);
   const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [testTo, setTestTo] = useState("");
+  const [busy, setBusy] = useState(false);
   const load = () => api.get("/telegram/status").then((r) => setSt(r.data));
   useEffect(() => { load(); }, []);
 
-  const connect = async () => {
-    try { await api.post("/telegram/connect", { phone }); toast.success("Подключено (демо-режим)"); load(); }
+  const startLogin = async () => {
+    setBusy(true);
+    try { await api.post("/telegram/login/start", { phone }); setCodeSent(true); toast.success("Код отправлен в Telegram"); }
     catch (e) { toast.error(apiError(e)); }
+    finally { setBusy(false); }
+  };
+  const completeLogin = async () => {
+    setBusy(true);
+    try { await api.post("/telegram/login/complete", { code, password: password || null }); toast.success("Telegram подключён"); setCodeSent(false); setCode(""); setPassword(""); load(); }
+    catch (e) { toast.error(apiError(e)); }
+    finally { setBusy(false); }
   };
   const disconnect = async () => { await api.post("/telegram/disconnect"); toast.success("Отключено"); load(); };
-  const check = async () => { const { data } = await api.post("/telegram/check"); toast[data.ok ? "success" : "error"](data.status); };
+  const check = async () => { try { const { data } = await api.post("/telegram/check"); toast.success(data.status); } catch (e) { toast.error(apiError(e)); } };
   const test = async () => {
-    try { const { data } = await api.post("/telegram/test", { to: "@test" }); toast.success(data.message); }
+    if (!testTo) { toast.error("Укажите получателя (@username)"); return; }
+    setBusy(true);
+    try { const { data } = await api.post("/telegram/test", { to: testTo }); toast.success(`Отправлено, id ${data.message_id}`); }
+    catch (e) { toast.error(apiError(e)); }
+    finally { setBusy(false); }
+  };
+  const checkReplies = async () => {
+    try { const { data } = await api.post("/telegram/check-replies"); toast.success(`Новых ответов: ${data.new_replies}`); }
     catch (e) { toast.error(apiError(e)); }
   };
 
   if (!st) return null;
   return (
     <Card className="p-4 rounded-sm border shadow-none space-y-3">
-      <div className="text-sm">Состояние: <b className={st.connected ? "text-emerald-600" : "text-red-600"}>{st.status}</b></div>
-      <div className="text-xs text-muted-foreground">Демо-режим: реальная MTProto-сессия выносится в отдельный постоянный worker-сервис.</div>
-      {!st.connected ? (
-        <div className="flex gap-2 items-end">
-          <div className="flex-1"><Label className="text-xs">Телефон рабочего аккаунта</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+7…" className="h-8 mt-1" data-testid="tg-phone" /></div>
-          <Button size="sm" className="h-8" onClick={connect} data-testid="tg-connect-btn">Подключить</Button>
+      {!st.api_configured && (
+        <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-sm p-2">
+          На backend не заданы TELEGRAM_API_ID и TELEGRAM_API_HASH. Получите их на my.telegram.org и добавьте в переменные окружения Render.
         </div>
+      )}
+      <div className="text-sm">Состояние: <b className={st.connected ? "text-emerald-600" : "text-red-600"}>{st.status}</b></div>
+
+      {!st.connected ? (
+        !codeSent ? (
+          <div className="flex gap-2 items-end">
+            <div className="flex-1"><Label className="text-xs">Номер рабочего Telegram-аккаунта</Label>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+7…" className="h-8 mt-1" data-testid="tg-phone" /></div>
+            <Button size="sm" className="h-8" onClick={startLogin} disabled={busy || !st.api_configured} data-testid="tg-start-btn">Отправить код</Button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div><Label className="text-xs">Код из Telegram</Label>
+              <Input value={code} onChange={(e) => setCode(e.target.value)} className="h-8 mt-1" data-testid="tg-code" /></div>
+            <div><Label className="text-xs">Пароль 2FA (если включён)</Label>
+              <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="h-8 mt-1" data-testid="tg-2fa" /></div>
+            <div className="flex gap-2">
+              <Button size="sm" className="h-8" onClick={completeLogin} disabled={busy} data-testid="tg-complete-btn">Подтвердить</Button>
+              <Button size="sm" variant="ghost" className="h-8" onClick={() => setCodeSent(false)}>Назад</Button>
+            </div>
+          </div>
+        )
       ) : (
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" className="h-8" onClick={check} data-testid="tg-check-btn">Проверить соединение</Button>
-          <Button size="sm" variant="outline" className="h-8" onClick={test} data-testid="tg-test-btn">Тестовое сообщение</Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild><Button size="sm" variant="destructive" className="h-8" data-testid="tg-disconnect-btn">Отключить</Button></AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader><AlertDialogTitle>Отключить Telegram?</AlertDialogTitle>
-                <AlertDialogDescription>Рабочий аккаунт будет отключён, рассылка в Telegram остановится.</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter><AlertDialogCancel>Отмена</AlertDialogCancel><AlertDialogAction onClick={disconnect}>Отключить</AlertDialogAction></AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+        <div className="space-y-2">
+          <div className="flex gap-2 items-end">
+            <div className="flex-1"><Label className="text-xs">Тест: отправить сообщение получателю</Label>
+              <Input value={testTo} onChange={(e) => setTestTo(e.target.value)} placeholder="@username" className="h-8 mt-1" data-testid="tg-test-to" /></div>
+            <Button size="sm" variant="outline" className="h-8" onClick={test} disabled={busy} data-testid="tg-test-btn">Отправить тест</Button>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" className="h-8" onClick={check} data-testid="tg-check-btn">Проверить соединение</Button>
+            <Button size="sm" variant="outline" className="h-8" onClick={checkReplies} data-testid="tg-check-replies-btn">Проверить ответы</Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild><Button size="sm" variant="destructive" className="h-8" data-testid="tg-disconnect-btn">Отключить</Button></AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader><AlertDialogTitle>Отключить Telegram?</AlertDialogTitle>
+                  <AlertDialogDescription>Зашифрованная сессия будет удалена. Отправка в Telegram остановится.</AlertDialogDescription></AlertDialogHeader>
+                <AlertDialogFooter><AlertDialogCancel>Отмена</AlertDialogCancel><AlertDialogAction onClick={disconnect}>Отключить</AlertDialogAction></AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
+        </div>
+      )}
+
+      {st.errors?.length > 0 && (
+        <div className="text-xs border-t border-border pt-2">
+          <div className="font-medium mb-1">Журнал ошибок Telegram</div>
+          {st.errors.slice(0, 5).map((e, i) => (
+            <div key={i} className="text-destructive truncate">{e.action}: {e.error}</div>
+          ))}
         </div>
       )}
     </Card>

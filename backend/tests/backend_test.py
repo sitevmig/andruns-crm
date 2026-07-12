@@ -504,35 +504,150 @@ class TestSettings:
 
 
 class TestIntegrations:
-    def test_telegram_status(self, auth):
+    """Iteration-1: real Telegram (Telethon) + Resend HTTPS — NO simulation.
+    Real keys are NOT set in test env => endpoints must return proper
+    503/400 errors, NEVER a fake success."""
+
+    # ---- Telegram ----
+    def test_telegram_status_not_configured_not_connected(self, auth):
+        # ensure clean state
+        requests.post(f"{API}/telegram/disconnect", headers=auth)
         r = requests.get(f"{API}/telegram/status", headers=auth)
         assert r.status_code == 200
-        assert "connected" in r.json()
+        d = r.json()
+        assert d["connected"] is False
+        assert d["api_configured"] is False
+        assert "status" in d and "errors" in d
 
-    def test_telegram_connect_disconnect(self, auth):
-        c = requests.post(f"{API}/telegram/connect", headers=auth, json={"phone": "+79990000000"})
-        assert c.status_code == 200
-        st = requests.get(f"{API}/telegram/status", headers=auth).json()
-        assert st["connected"] is True
-        d = requests.post(f"{API}/telegram/disconnect", headers=auth)
-        assert d.status_code == 200
-        st2 = requests.get(f"{API}/telegram/status", headers=auth).json()
-        assert st2["connected"] is False
+    def test_telegram_login_start_no_api_keys(self, auth):
+        r = requests.post(f"{API}/telegram/login/start", headers=auth, json={"phone": "+79990000000"})
+        # No fake success — must be 503 config error
+        assert r.status_code == 503, f"expected 503, got {r.status_code} {r.text}"
+        detail = r.json().get("detail", "")
+        assert "TELEGRAM_API_ID" in detail and "TELEGRAM_API_HASH" in detail
 
-    def test_telegram_test_requires_connected(self, auth):
-        # disconnect first
+    def test_telegram_test_requires_session(self, auth):
+        # no session => 400 "не подключен" (NOT fake success)
         requests.post(f"{API}/telegram/disconnect", headers=auth)
-        r = requests.post(f"{API}/telegram/test", headers=auth, json={"to": "@user"})
+        r = requests.post(f"{API}/telegram/test", headers=auth, json={"to": "@someone", "text": "hi"})
         assert r.status_code == 400
-        # connect and try
-        requests.post(f"{API}/telegram/connect", headers=auth, json={"phone": "+79990000000"})
-        r2 = requests.post(f"{API}/telegram/test", headers=auth, json={"to": "@user"})
-        assert r2.status_code == 200
+        assert "не подключен" in r.json().get("detail", "").lower()
 
-    def test_email_test(self, auth):
-        r = requests.post(f"{API}/email/test", headers=auth, json={"to": "test@x.ru"})
+    def test_telegram_send_requires_session(self, auth):
+        # Pick any org and try to send — session missing => 400
+        orgs = requests.get(f"{API}/organizations", headers=auth, params={"page_size": 5}).json()["items"]
+        oid = orgs[0]["id"]
+        r = requests.post(f"{API}/telegram/send", headers=auth, json={"org_id": oid, "text": "hi"})
+        # Could be 400 due to no session OR missing telegram field OR DNC — accept 400,
+        # but must not be a fake 200.
+        assert r.status_code in (400, 404), f"unexpected: {r.status_code} {r.text}"
+        assert r.status_code != 200
+
+    def test_telegram_check_replies_requires_session(self, auth):
+        requests.post(f"{API}/telegram/disconnect", headers=auth)
+        r = requests.post(f"{API}/telegram/check-replies", headers=auth)
+        assert r.status_code == 400
+        assert "не подключен" in r.json().get("detail", "").lower()
+
+    def test_telegram_disconnect_ok(self, auth):
+        r = requests.post(f"{API}/telegram/disconnect", headers=auth)
         assert r.status_code == 200
-        assert "демо-режим" in r.json()["message"]
+        assert r.json().get("ok") is True
+
+    # ---- Email (Resend) ----
+    def test_email_status_not_configured(self, auth):
+        r = requests.get(f"{API}/email/status", headers=auth)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["configured"] is False
+        assert d["provider"] == "resend"
+
+    def test_email_test_no_api_key(self, auth):
+        r = requests.post(f"{API}/email/test", headers=auth,
+                          json={"to": "test@example.com", "subject": "t", "text": "hi"})
+        # No fake success — 503 config error
+        assert r.status_code == 503, f"expected 503, got {r.status_code} {r.text}"
+        assert "RESEND_API_KEY" in r.json().get("detail", "")
+
+    def test_email_send_org_without_email(self, auth):
+        # create org without email -> 400
+        oid = requests.post(f"{API}/organizations", headers=auth,
+                            json={"name": "TEST_NoEmail_" + uuid.uuid4().hex[:6]}).json()["id"]
+        try:
+            r = requests.post(f"{API}/email/send", headers=auth,
+                              json={"org_id": oid, "subject": "s", "text": "hi"})
+            assert r.status_code == 400
+            assert "email" in r.json().get("detail", "").lower()
+        finally:
+            requests.delete(f"{API}/organizations/{oid}", headers=auth)
+
+    def test_email_send_dnc_org(self, auth):
+        # find a DNC org
+        orgs = requests.get(f"{API}/organizations", headers=auth, params={"do_not_contact": "yes"}).json()["items"]
+        if not orgs:
+            pytest.skip("No DNC org in seed data")
+        oid = orgs[0]["id"]
+        r = requests.post(f"{API}/email/send", headers=auth,
+                          json={"org_id": oid, "subject": "s", "text": "hi"})
+        assert r.status_code == 400
+        assert "не связываться" in r.json().get("detail", "").lower()
+
+    def test_email_send_no_api_key_returns_503(self, auth):
+        """Org with email + no DNC + no first msg => hits provider layer => 503 no API key.
+        Must NOT mark org as 'Отправлено'."""
+        oid = requests.post(f"{API}/organizations", headers=auth, json={
+            "name": "TEST_EmailNoKey_" + uuid.uuid4().hex[:6],
+            "email": f"noc{uuid.uuid4().hex[:6]}@x.ru",
+        }).json()["id"]
+        try:
+            # capture status before
+            before = requests.get(f"{API}/organizations/{oid}", headers=auth).json()
+            status_before = before["status"]
+            r = requests.post(f"{API}/email/send", headers=auth,
+                              json={"org_id": oid, "subject": "s", "text": "hi"})
+            assert r.status_code == 503
+            assert "RESEND_API_KEY" in r.json().get("detail", "")
+            # status must not change to "Отправлено"
+            after = requests.get(f"{API}/organizations/{oid}", headers=auth).json()
+            assert after["status"] == status_before, f"org status changed on failed send: {after['status']}"
+            assert after["status"] != "Отправлено"
+        finally:
+            requests.delete(f"{API}/organizations/{oid}", headers=auth)
+
+
+class TestNoBackgroundWorker:
+    """Iteration-1: background queue worker DISABLED — enqueued tasks
+    must NOT auto-transition to 'Отправлено' without an explicit process call."""
+
+    def test_worker_does_not_auto_send(self, auth):
+        # ensure global not stopped (so if worker were running it would send)
+        requests.post(f"{API}/queue/resume", headers=auth)
+        oid = requests.post(f"{API}/organizations", headers=auth, json={
+            "name": "TEST_NoAuto_" + uuid.uuid4().hex[:6],
+            "email": f"na{uuid.uuid4().hex[:6]}@x.ru",
+        }).json()["id"]
+        try:
+            tpl_id = requests.get(f"{API}/templates", headers=auth,
+                                  params={"channel": "email"}).json()[0]["id"]
+            enq = requests.post(f"{API}/queue/enqueue", headers=auth, json={
+                "org_ids": [oid], "channel": "email", "template_id": tpl_id
+            })
+            assert enq.status_code == 200 and enq.json()["added"] == 1
+            # wait 20s > worker interval (15s) — if auto-loop were on, task
+            # would be processed by now
+            time.sleep(20)
+            q = requests.get(f"{API}/queue", headers=auth).json()
+            org_tasks = [t for t in q if t["org_id"] == oid]
+            assert org_tasks, "queue task disappeared"
+            # No task should be Отправлено — must remain waiting/scheduled
+            for t in org_tasks:
+                assert t["status"] not in ("Отправлено", "Ошибка"), \
+                    f"background worker processed task: {t}"
+            org = requests.get(f"{API}/organizations/{oid}", headers=auth).json()
+            assert org["status"] != "Отправлено"
+        finally:
+            requests.post(f"{API}/queue/clear-pending", headers=auth)
+            requests.delete(f"{API}/organizations/{oid}", headers=auth)
 
 
 # ==============================================================

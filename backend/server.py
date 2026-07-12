@@ -75,9 +75,9 @@ async def startup():
     await db.login_attempts.create_index("_id")
     await seed_admins()
     await seed_demo()
-    global _worker_task
-    _worker_task = asyncio.create_task(_queue_loop())
-    logger.info("CRM backend started, queue worker running")
+    # Background queue worker disabled: real sending is triggered explicitly
+    # per manager action (no simulation, no mass auto-send).
+    logger.info("CRM backend started")
 
 
 @app.on_event("shutdown")
