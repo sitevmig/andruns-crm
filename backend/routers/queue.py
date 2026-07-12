@@ -95,8 +95,13 @@ async def cancel_task(task_id: str, user: dict = Depends(get_current_user)):
 
 @router.post("/process")
 async def process_now(user: dict = Depends(get_current_user)):
-    result = await process_queue()
-    return result
+    # Iteration 1: no simulated sending and no mass send. Real sending is done
+    # per-client via /api/email/send and /api/telegram/send. Queue-based mass
+    # dispatch will be wired to the real integrations in iteration 2 (with managers).
+    raise HTTPException(
+        status_code=400,
+        detail="Массовая обработка очереди отключена в этой версии. Отправляйте по одному через карточку клиента (email/Telegram). Массовая рассылка будет включена вместе с ролями менеджеров.",
+    )
 
 
 @router.post("/stop-all")

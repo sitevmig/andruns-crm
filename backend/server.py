@@ -55,15 +55,6 @@ app.add_middleware(
 _worker_task = None
 
 
-async def _queue_loop():
-    while True:
-        try:
-            await process_queue(limit=50)
-        except Exception as e:
-            logger.error(f"queue loop error: {e}")
-        await asyncio.sleep(15)
-
-
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
