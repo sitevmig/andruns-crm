@@ -15,7 +15,7 @@ import {
 
 const NAV = [
   { to: "/", label: "Главная", icon: LayoutDashboard, end: true },
-  { to: "/organizations", label: "Организации", icon: Building2 },
+  { to: "/organizations", label: "Клиенты", icon: Building2 },
   { to: "/import", label: "Импорт", icon: Upload },
   { to: "/queue", label: "Очередь", icon: ListChecks },
   { to: "/templates", label: "Шаблоны", icon: FileText },
@@ -62,7 +62,7 @@ export default function Layout() {
     <div className="flex h-screen overflow-hidden">
       <aside className="w-60 shrink-0 border-r border-border bg-white flex flex-col">
         <div className="h-14 flex items-center px-4 border-b border-border">
-          <span className="font-semibold tracking-tight text-primary">CRM · Холодные продажи</span>
+          <span className="font-semibold tracking-tight text-primary">CRM Andruns</span>
         </div>
         <nav className="flex-1 overflow-y-auto py-2">
           {NAV.map((item) => {

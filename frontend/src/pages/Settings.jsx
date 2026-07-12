@@ -69,7 +69,7 @@ export default function Settings() {
 
         <TabsContent value="email">
           <Card className="p-4 rounded-sm border shadow-none space-y-3">
-            <Field label="Провайдер"><Input value={s.email_provider} onChange={(e) => setS({ ...s, email_provider: e.target.value })} onBlur={() => update({ email_provider: s.email_provider })} className="h-8" /></Field>
+            <Field label="Провайдер"><Input value="resend" readOnly disabled className="h-8" data-testid="email-provider" /></Field>
             <Field label="Имя отправителя"><Input value={s.sender_name} onChange={(e) => setS({ ...s, sender_name: e.target.value })} onBlur={() => update({ sender_name: s.sender_name })} className="h-8" /></Field>
             <Field label="Адрес отправителя"><Input value={s.sender_email} onChange={(e) => setS({ ...s, sender_email: e.target.value })} onBlur={() => update({ sender_email: s.sender_email })} className="h-8" /></Field>
             <Field label="Reply-to"><Input value={s.reply_to} onChange={(e) => setS({ ...s, reply_to: e.target.value })} onBlur={() => update({ reply_to: s.reply_to })} className="h-8" /></Field>

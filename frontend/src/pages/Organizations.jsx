@@ -91,13 +91,15 @@ export default function Organizations() {
   return (
     <div className="space-y-3" data-testid="organizations-page">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold tracking-tight">Организации <span className="text-muted-foreground font-normal">({total})</span></h1>
+        <h1 className="text-lg font-semibold tracking-tight">Клиенты <span className="text-muted-foreground font-normal">({total})</span></h1>
         <Button size="sm" variant="outline" className="h-8" onClick={exportSelected} data-testid="export-view-btn"><Download size={14} className="mr-1" />Экспорт вида</Button>
       </div>
 
       {/* Saved filters */}
       <div className="flex flex-wrap gap-1">
-        {meta.saved_filters.map((sf) => (
+        {meta.saved_filters
+          .filter((sf) => !["ready_email", "ready_telegram", "interested", "errors"].includes(sf.key))
+          .map((sf) => (
           <Button key={sf.key} size="sm" variant="secondary" className="h-7 text-xs" onClick={() => applySaved(sf)} data-testid={`saved-filter-${sf.key}`}>
             {sf.label}
           </Button>
@@ -163,18 +165,16 @@ export default function Organizations() {
           <thead>
             <tr>
               <th className="w-8"><Checkbox checked={selected.size > 0 && selected.size === items.length} onCheckedChange={toggleAll} data-testid="select-all" /></th>
-              <th className="cursor-pointer" onClick={() => setSortBy("name")}>Организация</th>
+              <th className="cursor-pointer" onClick={() => setSortBy("name")}>Клиент</th>
               <th>Категория</th>
               <th>Город</th>
               <th>Телефон</th>
               <th>Email</th>
               <th>Telegram</th>
               <th>Статус</th>
-              <th>Канал</th>
+              <th>Менеджер</th>
               <th className="cursor-pointer" onClick={() => setSortBy("last_message_at")}>Последнее сообщение</th>
-              <th>След. действие</th>
               <th>Комментарий</th>
-              <th>ЧС</th>
             </tr>
           </thead>
           <tbody>
@@ -188,15 +188,13 @@ export default function Organizations() {
                 <td onClick={() => setOpenId(o.id)}>{o.email || "—"}</td>
                 <td onClick={() => setOpenId(o.id)}>{o.telegram || "—"}</td>
                 <td onClick={() => setOpenId(o.id)}><StatusBadge status={o.status} /></td>
-                <td onClick={() => setOpenId(o.id)}>{o.last_channel || "—"}</td>
+                <td onClick={() => setOpenId(o.id)}>{o.assigned_manager_name || "—"}</td>
                 <td onClick={() => setOpenId(o.id)}>{fmtDate(o.last_message_at)}</td>
-                <td onClick={() => setOpenId(o.id)}>{o.next_action_at ? fmtDate(o.next_action_at) : "—"}</td>
                 <td onClick={() => setOpenId(o.id)} className="max-w-[160px] truncate">{o.comment || "—"}</td>
-                <td onClick={() => setOpenId(o.id)}>{o.do_not_contact ? <span className="text-red-600 font-bold">✕</span> : ""}</td>
               </tr>
             ))}
             {items.length === 0 && (
-              <tr><td colSpan={13} className="text-center text-muted-foreground py-6">Нет данных</td></tr>
+              <tr><td colSpan={11} className="text-center text-muted-foreground py-6">Нет данных</td></tr>
             )}
           </tbody>
         </table>

@@ -3,17 +3,12 @@ import { api } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 
 const STAT_ITEMS = [
-  { key: "total", label: "Всего организаций" },
-  { key: "new", label: "Новых" },
-  { key: "ready", label: "Готовы к отправке" },
+  { key: "total", label: "Клиентов" },
   { key: "sent_today", label: "Отправлено сегодня" },
   { key: "sent_week", label: "Отправлено за неделю" },
   { key: "replied", label: "Ответили" },
-  { key: "interested", label: "Проявили интерес" },
-  { key: "rejected", label: "Отказали" },
   { key: "in_progress", label: "В работе" },
-  { key: "errors", label: "Ошибки доставки" },
-  { key: "queue_count", label: "Задач в очереди" },
+  { key: "rejected", label: "Отказались" },
 ];
 
 const FUNNEL = [
