@@ -16,7 +16,7 @@ from worker import process_queue
 
 from routers import (
     auth, admins, organizations, imports, templates, queue,
-    replies, duplicates, dashboard, settings, integrations, exports, backups,
+    dashboard, settings, integrations, exports, backups,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -30,8 +30,6 @@ app.include_router(organizations.router)
 app.include_router(imports.router)
 app.include_router(templates.router)
 app.include_router(queue.router)
-app.include_router(replies.router)
-app.include_router(duplicates.router)
 app.include_router(dashboard.router)
 app.include_router(settings.router)
 app.include_router(integrations.router)

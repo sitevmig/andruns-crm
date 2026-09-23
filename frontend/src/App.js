@@ -9,8 +9,6 @@ import Organizations from "@/pages/Organizations";
 import Import from "@/pages/Import";
 import Queue from "@/pages/Queue";
 import Templates from "@/pages/Templates";
-import Replies from "@/pages/Replies";
-import Duplicates from "@/pages/Duplicates";
 import ExportPage from "@/pages/Export";
 import Journal from "@/pages/Journal";
 import Settings from "@/pages/Settings";
@@ -44,8 +42,6 @@ function App() {
               <Route path="import" element={<Import />} />
               <Route path="queue" element={<Queue />} />
               <Route path="templates" element={<Templates />} />
-              <Route path="replies" element={<Replies />} />
-              <Route path="duplicates" element={<Duplicates />} />
               <Route path="export" element={<ExportPage />} />
               <Route path="journal" element={<Journal />} />
               <Route path="settings" element={<Settings />} />

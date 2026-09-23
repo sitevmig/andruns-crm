@@ -21,6 +21,16 @@ async def log_message(org_id: str, channel: str, direction: str, text: str,
     return str(res.inserted_id)
 
 
+def sender_from_addr(s: dict) -> str:
+    """Build the RFC 5322 'From' header value from settings. Raises ValueError if unset."""
+    import os
+    name = s.get("sender_name") or "CRM Andruns"
+    email = s.get("sender_email") or os.environ.get("EMAIL_FROM_ADDRESS", "")
+    if not email:
+        raise ValueError("Не задан адрес отправителя (Настройки → Email).")
+    return f"{name} <{email}>"
+
+
 async def get_settings() -> dict:
     s = await db.settings.find_one({"_id": "global"})
     if not s:
@@ -40,8 +50,8 @@ def default_settings() -> dict:
         "sending_stopped": False,
         "default_template_id": None,
         "sender_name": "Отдел продаж",
-        "sender_email": "sales@example.com",
-        "reply_to": "sales@example.com",
+        "sender_email": "vmig.ai@mail.ru",
+        "reply_to": "vmig.ai@mail.ru",
         "signature": "С уважением, команда веб-студии.",
         "email_provider": "mock",
         "retry_max_attempts": 3,

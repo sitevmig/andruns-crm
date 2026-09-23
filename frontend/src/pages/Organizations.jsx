@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
-import { api, apiError, API } from "@/lib/api";
+import { api, apiError } from "@/lib/api";
 import { StatusBadge, fmtDate } from "@/components/StatusBadge";
 import OrgDrawer from "@/components/OrgDrawer";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger,
 } from "@/components/ui/dialog";
-import { Search, Download } from "lucide-react";
+import { Search, Download, Send, Square } from "lucide-react";
 
 const ALL = "__all__";
+const CAMPAIGN_MAX = 10;
 
 export default function Organizations() {
   const [meta, setMeta] = useState({ statuses: [], categories: [], cities: [], saved_filters: [] });
@@ -24,13 +25,13 @@ export default function Organizations() {
   const [filters, setFilters] = useState({ search: "", status: "", category: "", city: "", has_email: "", has_telegram: "", do_not_contact: "" });
   const [sortBy, setSortBy] = useState("updated_at");
   const [templates, setTemplates] = useState([]);
-  const [enqueueChannel, setEnqueueChannel] = useState("email");
-  const [enqueueTpl, setEnqueueTpl] = useState("");
+  const [campaignTpl, setCampaignTpl] = useState("");
   const [bulkStatus, setBulkStatus] = useState("");
+  const [campaign, setCampaign] = useState({ running: false, total: 0, sent: 0, errors: 0 });
 
   useEffect(() => {
     api.get("/organizations/meta").then((r) => setMeta(r.data));
-    api.get("/templates").then((r) => setTemplates(r.data));
+    api.get("/templates", { params: { channel: "email" } }).then((r) => setTemplates(r.data));
   }, []);
 
   const load = useCallback(() => {
@@ -41,18 +42,43 @@ export default function Organizations() {
 
   useEffect(() => { load(); }, [load]);
 
+  const wasRunning = useRef(false);
+  const refreshCampaign = useCallback(() => {
+    api.get("/queue/campaign-status").then((r) => {
+      setCampaign(r.data);
+      if (wasRunning.current && !r.data.running) load(); // campaign just finished
+      wasRunning.current = r.data.running;
+    }).catch(() => {});
+  }, [load]);
+
+  useEffect(() => {
+    refreshCampaign();
+    const t = setInterval(refreshCampaign, 5000);
+    return () => clearInterval(t);
+  }, [refreshCampaign]);
+
   const applySaved = (sf) => {
     setFilters({ search: "", status: "", category: "", city: "", has_email: "", has_telegram: "", do_not_contact: "", ...sf.filters });
     setPage(1);
   };
 
   const toggleAll = () => {
-    if (selected.size === items.length) setSelected(new Set());
-    else setSelected(new Set(items.map((i) => i.id)));
+    if (selected.size === items.length) { setSelected(new Set()); return; }
+    if (items.length > CAMPAIGN_MAX) {
+      toast.error(`За один запуск рассылки можно выбрать не более ${CAMPAIGN_MAX} клиентов`);
+      setSelected(new Set(items.slice(0, CAMPAIGN_MAX).map((i) => i.id)));
+      return;
+    }
+    setSelected(new Set(items.map((i) => i.id)));
   };
   const toggle = (id) => {
     const s = new Set(selected);
-    s.has(id) ? s.delete(id) : s.add(id);
+    if (s.has(id)) { s.delete(id); setSelected(s); return; }
+    if (s.size >= CAMPAIGN_MAX) {
+      toast.error(`За один запуск рассылки можно выбрать не более ${CAMPAIGN_MAX} клиентов`);
+      return;
+    }
+    s.add(id);
     setSelected(s);
   };
 
@@ -67,13 +93,18 @@ export default function Organizations() {
     try { await api.post("/organizations/bulk/archive", { ids }); toast.success("Архивировано"); setSelected(new Set()); load(); }
     catch (e) { toast.error(apiError(e)); }
   };
-  const doEnqueue = async () => {
-    if (!enqueueTpl) { toast.error("Выберите шаблон"); return; }
+  const doStartCampaign = async () => {
+    if (!campaignTpl) { toast.error("Выберите шаблон"); return; }
     try {
-      const { data } = await api.post("/queue/enqueue", { org_ids: ids, channel: enqueueChannel, template_id: enqueueTpl });
-      toast.success(`Добавлено в очередь: ${data.added}, пропущено: ${data.skipped}`);
+      const { data } = await api.post("/queue/start-campaign", { org_ids: ids, template_id: campaignTpl });
+      toast.success(`Рассылка запущена: ${data.started}${data.skipped ? `, пропущено: ${data.skipped}` : ""}`);
       setSelected(new Set());
+      refreshCampaign();
     } catch (e) { toast.error(apiError(e)); }
+  };
+  const doStopCampaign = async () => {
+    try { await api.post("/queue/stop-campaign"); toast.success("Рассылка остановлена"); refreshCampaign(); }
+    catch (e) { toast.error(apiError(e)); }
   };
   const doRemoveQueue = async () => {
     try { await api.post("/queue/remove", { ids }); toast.success("Исключено из очереди"); }
@@ -85,8 +116,6 @@ export default function Organizations() {
     const url = URL.createObjectURL(res.data);
     const a = document.createElement("a"); a.href = url; a.download = "crm_filtered.xlsx"; a.click();
   };
-
-  const filteredTemplates = templates.filter((t) => t.channel === enqueueChannel);
 
   return (
     <div className="space-y-3" data-testid="organizations-page">
@@ -121,10 +150,23 @@ export default function Organizations() {
         <Button size="sm" variant="ghost" className="h-8" onClick={() => setFilters({ search: "", status: "", category: "", city: "", has_email: "", has_telegram: "", do_not_contact: "" })}>Сброс</Button>
       </div>
 
+      {/* Active campaign status */}
+      {campaign.running && (
+        <div className="flex flex-wrap items-center gap-3 bg-emerald-50 border border-emerald-200 rounded-sm p-2" data-testid="campaign-banner">
+          <span className="text-sm font-medium text-emerald-800">
+            Рассылка выполняется: отправлено {campaign.sent} из {campaign.total}
+            {campaign.errors > 0 && <span className="text-destructive"> · ошибок: {campaign.errors}</span>}
+          </span>
+          <Button size="sm" variant="destructive" className="h-8" onClick={doStopCampaign} data-testid="stop-campaign-btn">
+            <Square size={14} className="mr-1" />Остановить рассылку
+          </Button>
+        </div>
+      )}
+
       {/* Bulk actions */}
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 bg-primary/5 border border-primary/20 rounded-sm p-2" data-testid="bulk-bar">
-          <span className="text-sm font-medium">Выбрано: {selected.size}</span>
+          <span className="text-sm font-medium">Выбрано: {selected.size} / {CAMPAIGN_MAX}</span>
           <Select value={bulkStatus} onValueChange={setBulkStatus}>
             <SelectTrigger className="h-8 w-44" data-testid="bulk-status-select"><SelectValue placeholder="Изменить статус" /></SelectTrigger>
             <SelectContent>{meta.statuses.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
@@ -133,24 +175,22 @@ export default function Organizations() {
 
           <Dialog>
             <DialogTrigger asChild>
-              <Button size="sm" variant="outline" className="h-8" data-testid="bulk-enqueue-btn">В очередь</Button>
+              <Button size="sm" className="h-8" disabled={campaign.running} data-testid="start-campaign-btn">
+                <Send size={14} className="mr-1" />Начать рассылку
+              </Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Добавить {selected.size} в очередь</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>Начать рассылку — {selected.size} клиентов</DialogTitle></DialogHeader>
               <div className="space-y-2">
-                <Select value={enqueueChannel} onValueChange={(v) => { setEnqueueChannel(v); setEnqueueTpl(""); }}>
-                  <SelectTrigger className="h-8" data-testid="enqueue-channel"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="telegram">Telegram</SelectItem>
-                  </SelectContent>
+                <Select value={campaignTpl} onValueChange={setCampaignTpl}>
+                  <SelectTrigger className="h-8" data-testid="campaign-template"><SelectValue placeholder="Шаблон из раздела «Шаблоны»" /></SelectTrigger>
+                  <SelectContent>{templates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
                 </Select>
-                <Select value={enqueueTpl} onValueChange={setEnqueueTpl}>
-                  <SelectTrigger className="h-8" data-testid="enqueue-template"><SelectValue placeholder="Шаблон" /></SelectTrigger>
-                  <SelectContent>{filteredTemplates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
-                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Письма уйдут по одному с интервалом 3 минуты между отправками. Остановить можно в любой момент.
+                </p>
               </div>
-              <DialogFooter><Button onClick={doEnqueue} data-testid="confirm-enqueue">Добавить</Button></DialogFooter>
+              <DialogFooter><Button onClick={doStartCampaign} data-testid="confirm-start-campaign">Начать рассылку</Button></DialogFooter>
             </DialogContent>
           </Dialog>
 

@@ -194,10 +194,14 @@ function TelegramSettings() {
   );
 }
 
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
 function EmailTest() {
   const [to, setTo] = useState("");
   const send = async () => {
-    try { const { data } = await api.post("/email/test", { to }); toast.success(data.message); }
+    const trimmed = to.trim();
+    if (!EMAIL_RE.test(trimmed)) { toast.error("Укажите корректный email в формате email@example.com"); return; }
+    try { const { data } = await api.post("/email/test", { to: trimmed }); toast.success(`Письмо отправлено, id ${data.message_id}`); }
     catch (e) { toast.error(apiError(e)); }
   };
   return (

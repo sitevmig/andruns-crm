@@ -1,8 +1,8 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
-  LayoutDashboard, Building2, Upload, ListChecks, FileText, MessageSquare,
-  Copy, Download, ScrollText, Settings as SettingsIcon, LogOut, Square, Play,
+  LayoutDashboard, Building2, Upload, ListChecks, FileText,
+  Download, ScrollText, Settings as SettingsIcon, LogOut, Square, Play,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, apiError } from "@/lib/api";
@@ -19,8 +19,6 @@ const NAV = [
   { to: "/import", label: "Импорт", icon: Upload },
   { to: "/queue", label: "Очередь", icon: ListChecks },
   { to: "/templates", label: "Шаблоны", icon: FileText },
-  { to: "/replies", label: "Ответы", icon: MessageSquare, badgeKey: "replies" },
-  { to: "/duplicates", label: "Дубли", icon: Copy },
   { to: "/export", label: "Экспорт", icon: Download },
   { to: "/journal", label: "Журнал", icon: ScrollText },
   { to: "/settings", label: "Настройки", icon: SettingsIcon },
@@ -29,11 +27,9 @@ const NAV = [
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const [unread, setUnread] = useState(0);
   const [sendingStopped, setSendingStopped] = useState(false);
 
   const refresh = () => {
-    api.get("/replies/unread-count").then((r) => setUnread(r.data.count)).catch(() => {});
     api.get("/settings").then((r) => setSendingStopped(r.data.sending_stopped)).catch(() => {});
   };
 
@@ -81,11 +77,6 @@ export default function Layout() {
               >
                 <Icon size={16} />
                 <span className="flex-1">{item.label}</span>
-                {item.badgeKey === "replies" && unread > 0 && (
-                  <span className="rounded-full bg-emerald-600 text-white text-[10px] px-1.5 py-0.5" data-testid="replies-badge">
-                    {unread}
-                  </span>
-                )}
               </NavLink>
             );
           })}

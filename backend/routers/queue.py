@@ -7,13 +7,15 @@ from database import db
 from helpers import now_iso, serialize_list
 from security import get_current_user
 from services import get_settings
-from worker import process_queue
+from worker import process_queue, start_campaign, stop_campaign, campaign_status
 from constants import (
     CHANNEL_EMAIL, CHANNEL_TELEGRAM, Q_WAITING, Q_SCHEDULED, Q_CANCELLED, Q_ERROR,
     STATUS_DNC, STATUS_SCHEDULED,
 )
 
 router = APIRouter(prefix="/api/queue", tags=["queue"])
+
+CAMPAIGN_MAX_RECIPIENTS = 10
 
 
 class EnqueueBody(BaseModel):
@@ -144,3 +146,66 @@ async def retry_errors(user: dict = Depends(get_current_user)):
         {"$set": {"status": Q_WAITING, "last_error": ""}},
     )
     return {"ok": True, "count": res.modified_count}
+
+
+class StartCampaignBody(BaseModel):
+    org_ids: List[str]
+    template_id: str
+
+
+@router.post("/start-campaign")
+async def start_campaign_route(body: StartCampaignBody, user: dict = Depends(get_current_user)):
+    """Send an email template to up to CAMPAIGN_MAX_RECIPIENTS clients, one at a
+    time, three minutes apart ('Начать рассылку')."""
+    if campaign_status()["running"]:
+        raise HTTPException(status_code=409, detail="Рассылка уже выполняется. Дождитесь окончания или остановите её.")
+    if not body.org_ids:
+        raise HTTPException(status_code=400, detail="Выберите хотя бы одного клиента.")
+    if len(body.org_ids) > CAMPAIGN_MAX_RECIPIENTS:
+        raise HTTPException(status_code=400, detail=f"Можно выбрать не более {CAMPAIGN_MAX_RECIPIENTS} клиентов за один запуск.")
+    tpl = await db.templates.find_one({"_id": ObjectId(body.template_id)})
+    if not tpl or tpl.get("channel") != CHANNEL_EMAIL:
+        raise HTTPException(status_code=400, detail="Выберите email-шаблон в разделе «Шаблоны».")
+
+    task_ids = []
+    skipped = 0
+    for oid in body.org_ids:
+        org = await db.organizations.find_one({"_id": ObjectId(oid)})
+        if not org or org.get("do_not_contact") or not org.get("email"):
+            skipped += 1
+            continue
+        existing = await db.queue.find_one({"org_id": oid, "channel": CHANNEL_EMAIL,
+                                            "status": {"$in": [Q_WAITING, Q_SCHEDULED]}})
+        if existing:
+            skipped += 1
+            continue
+        tid = str(uuid.uuid4())
+        await db.queue.insert_one({
+            "_id": tid, "org_id": oid, "channel": CHANNEL_EMAIL,
+            "template_id": body.template_id, "scheduled_at": None, "status": Q_WAITING,
+            "attempts": 0, "last_error": "", "created_by": user["email"], "created_at": now_iso(),
+        })
+        task_ids.append(tid)
+
+    if not task_ids:
+        raise HTTPException(status_code=400, detail="Нет подходящих клиентов для рассылки (проверьте email и список «Не связываться»).")
+
+    await db.settings.update_one({"_id": "global"}, {"$set": {"sending_stopped": False}}, upsert=True)
+    start_campaign(task_ids)
+    return {"ok": True, "started": len(task_ids), "skipped": skipped}
+
+
+@router.post("/stop-campaign")
+async def stop_campaign_route(user: dict = Depends(get_current_user)):
+    stop_campaign()
+    await db.queue.update_many(
+        {"status": {"$in": [Q_WAITING, Q_SCHEDULED]}},
+        {"$set": {"status": Q_CANCELLED, "last_error": "Рассылка остановлена вручную"}},
+    )
+    await db.settings.update_one({"_id": "global"}, {"$set": {"sending_stopped": True}}, upsert=True)
+    return {"ok": True}
+
+
+@router.get("/campaign-status")
+async def campaign_status_route(user: dict = Depends(get_current_user)):
+    return campaign_status()

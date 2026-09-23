@@ -11,9 +11,10 @@ from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, F
 from database import db
 from helpers import now_iso, render_template
 from security import get_current_user
-from services import get_settings, log_message, log_change
+from services import get_settings, log_message, log_change, sender_from_addr
 from crypto import encrypt_dict, decrypt_dict
-from email_provider import send_email, email_configured, EmailNotConfigured
+from email_provider import send_email, email_configured, EmailNotConfigured, InvalidEmailAddress
+from helpers import is_valid_email
 from constants import CHANNEL_EMAIL, CHANNEL_TELEGRAM, STATUS_SENT, STATUS_REPLIED
 
 router = APIRouter(prefix="/api", tags=["integrations"])
@@ -286,21 +287,25 @@ class EmailTestBody(BaseModel):
 
 
 def _from_addr(s):
-    name = s.get("sender_name") or "CRM Andruns"
-    email = s.get("sender_email") or os.environ.get("EMAIL_FROM_ADDRESS", "")
-    if not email:
-        raise HTTPException(status_code=400, detail="Не задан адрес отправителя (Настройки → Email).")
-    return f"{name} <{email}>"
+    try:
+        return sender_from_addr(s)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/email/test")
 async def email_test(body: EmailTestBody, user: dict = Depends(get_current_user)):
+    to = (body.to or "").strip()
+    if not is_valid_email(to):
+        raise HTTPException(status_code=400, detail=f"Некорректный email получателя: «{to}». Укажите адрес в формате email@example.com.")
     s = await get_settings()
     try:
-        mid = send_email(body.to, body.subject, f"<p>{body.text}</p>", body.text, _from_addr(s), s.get("reply_to"))
+        mid = send_email(to, body.subject, f"<p>{body.text}</p>", body.text, _from_addr(s), s.get("reply_to"))
         return {"ok": True, "message_id": mid}
     except EmailNotConfigured as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except InvalidEmailAddress as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ошибка отправки email: {e}")
 
@@ -321,6 +326,8 @@ async def email_send(body: EmailSendBody, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=400, detail="Организация в списке «Не связываться».")
     if not org.get("email"):
         raise HTTPException(status_code=400, detail="У организации нет email.")
+    if not is_valid_email(org["email"]):
+        raise HTTPException(status_code=400, detail=f"У организации некорректный email: «{org['email']}».")
     already = await db.messages.find_one({"org_id": body.org_id, "channel": CHANNEL_EMAIL,
                                           "direction": "outgoing", "delivery_status": "Отправлено"})
     if already:
@@ -330,6 +337,8 @@ async def email_send(body: EmailSendBody, user: dict = Depends(get_current_user)
         mid = send_email(org["email"], body.subject, body.html or f"<p>{body.text}</p>", body.text, _from_addr(s), s.get("reply_to"))
     except EmailNotConfigured as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except InvalidEmailAddress as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Ошибка отправки email: {e}")
     await log_message(body.org_id, CHANNEL_EMAIL, "outgoing", body.subject + "\n\n" + body.text, None, "Отправлено", "", user["email"], mid)
