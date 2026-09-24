@@ -350,19 +350,48 @@ async def email_send(body: EmailSendBody, user: dict = Depends(get_current_user)
 
 @router.get("/diag/smtp")
 async def diag_smtp():
-    """Temporary, unauthenticated: checks whether the backend's network can
-    reach the configured SMTP host/port at all (no credentials involved,
-    no mail sent). Used to rule out the hosting provider blocking outbound
-    SMTP. Safe to remove once the mail.ru SMTP setup is confirmed working."""
+    """Temporary, unauthenticated: walks through TCP connect -> SSL handshake
+    -> SMTP login against the configured SMTP host, each with its own short
+    timeout, to pinpoint exactly where a hang or failure happens (no mail is
+    sent). Safe to remove once mail.ru SMTP sending is confirmed working."""
     import socket
     import time
+    import smtplib
 
     host = os.environ.get("SMTP_HOST", "smtp.mail.ru")
     port = int(os.environ.get("SMTP_PORT", "465"))
+    user = os.environ.get("SMTP_USER")
+    password = os.environ.get("SMTP_PASSWORD")
+    result = {"host": host, "port": port, "smtp_user_set": bool(user), "smtp_password_set": bool(password)}
+
     start = time.time()
     try:
         with socket.create_connection((host, port), timeout=8):
             pass
-        return {"ok": True, "host": host, "port": port, "elapsed_seconds": round(time.time() - start, 2)}
+        result["1_tcp_connect"] = {"ok": True, "elapsed_seconds": round(time.time() - start, 2)}
     except Exception as e:
-        return {"ok": False, "host": host, "port": port, "error": str(e), "elapsed_seconds": round(time.time() - start, 2)}
+        result["1_tcp_connect"] = {"ok": False, "error": str(e), "elapsed_seconds": round(time.time() - start, 2)}
+        return result
+
+    start = time.time()
+    try:
+        server = smtplib.SMTP_SSL(host, port, timeout=8)
+        result["2_ssl_handshake"] = {"ok": True, "elapsed_seconds": round(time.time() - start, 2)}
+    except Exception as e:
+        result["2_ssl_handshake"] = {"ok": False, "error": str(e), "elapsed_seconds": round(time.time() - start, 2)}
+        return result
+
+    if user and password:
+        start = time.time()
+        try:
+            server.login(user, password)
+            result["3_login"] = {"ok": True, "elapsed_seconds": round(time.time() - start, 2)}
+        except Exception as e:
+            result["3_login"] = {"ok": False, "error": str(e), "elapsed_seconds": round(time.time() - start, 2)}
+    else:
+        result["3_login"] = {"skipped": "SMTP_USER/SMTP_PASSWORD not set"}
+    try:
+        server.quit()
+    except Exception:
+        pass
+    return result
