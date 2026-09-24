@@ -1,5 +1,10 @@
 import os
 import re
+import smtplib
+import uuid
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import parseaddr
 import requests
 
 RESEND_URL = "https://api.resend.com/emails"
@@ -25,6 +30,8 @@ def email_configured() -> bool:
     provider = os.environ.get("EMAIL_PROVIDER", "resend").lower()
     if provider == "resend":
         return bool(os.environ.get("RESEND_API_KEY"))
+    if provider == "smtp":
+        return bool(os.environ.get("SMTP_USER") and os.environ.get("SMTP_PASSWORD"))
     return False
 
 
@@ -33,6 +40,8 @@ def send_email(to: str, subject: str, html: str, text: str, from_addr: str, repl
     provider = os.environ.get("EMAIL_PROVIDER", "resend").lower()
     if provider == "resend":
         return _send_resend(to, subject, html, text, from_addr, reply_to)
+    if provider == "smtp":
+        return _send_smtp(to, subject, html, text, from_addr, reply_to)
     raise EmailNotConfigured(f"Неизвестный email-провайдер: {provider}")
 
 
@@ -55,3 +64,34 @@ def _send_resend(to, subject, html, text, from_addr, reply_to) -> str:
     if resp.status_code >= 400:
         raise RuntimeError(f"Resend API error {resp.status_code}: {resp.text}")
     return resp.json().get("id", "")
+
+
+def _send_smtp(to, subject, html, text, from_addr, reply_to) -> str:
+    """Send via a real mailbox's own SMTP server (e.g. mail.ru), authenticating as
+    that mailbox. Unlike Resend, this needs no domain verification — it sends as
+    the actual account you log in with, so From should be that same address."""
+    host = os.environ.get("SMTP_HOST", "smtp.mail.ru")
+    port = int(os.environ.get("SMTP_PORT", "465"))
+    user = os.environ.get("SMTP_USER")
+    password = os.environ.get("SMTP_PASSWORD")
+    if not user or not password:
+        raise EmailNotConfigured("Не заданы SMTP_USER и SMTP_PASSWORD в переменных окружения backend.")
+    to = _validate_to(to)
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = to
+    if reply_to:
+        msg["Reply-To"] = reply_to
+    msg.attach(MIMEText(text or "", "plain", "utf-8"))
+    msg.attach(MIMEText(html or f"<p>{text}</p>", "html", "utf-8"))
+
+    envelope_from = parseaddr(from_addr)[1] or user
+    try:
+        with smtplib.SMTP_SSL(host, port, timeout=30) as server:
+            server.login(user, password)
+            server.sendmail(envelope_from, [to], msg.as_string())
+    except smtplib.SMTPException as e:
+        raise RuntimeError(f"Ошибка SMTP ({host}:{port}): {e}")
+    return f"smtp-{uuid.uuid4().hex[:12]}"

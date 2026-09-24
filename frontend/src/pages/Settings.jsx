@@ -18,9 +18,14 @@ import {
 export default function Settings() {
   const [s, setS] = useState(null);
   const [templates, setTemplates] = useState([]);
+  const [emailStatus, setEmailStatus] = useState(null);
 
   const load = () => api.get("/settings").then((r) => setS(r.data));
-  useEffect(() => { load(); api.get("/templates").then((r) => setTemplates(r.data)); }, []);
+  useEffect(() => {
+    load();
+    api.get("/templates").then((r) => setTemplates(r.data));
+    api.get("/email/status").then((r) => setEmailStatus(r.data));
+  }, []);
 
   const update = async (patch) => {
     try { const { data } = await api.put("/settings", patch); setS(data); toast.success("Сохранено"); }
@@ -69,7 +74,14 @@ export default function Settings() {
 
         <TabsContent value="email">
           <Card className="p-4 rounded-sm border shadow-none space-y-3">
-            <Field label="Провайдер"><Input value="resend" readOnly disabled className="h-8" data-testid="email-provider" /></Field>
+            <Field label="Провайдер">
+              <Input value={emailStatus?.provider || "…"} readOnly disabled className="h-8" data-testid="email-provider" />
+              {emailStatus && !emailStatus.configured && (
+                <p className="mt-1 text-xs text-amber-700">
+                  Провайдер «{emailStatus.provider}» не настроен — заданы не все переменные окружения на backend.
+                </p>
+              )}
+            </Field>
             <Field label="Имя отправителя"><Input value={s.sender_name} onChange={(e) => setS({ ...s, sender_name: e.target.value })} onBlur={() => update({ sender_name: s.sender_name })} className="h-8" /></Field>
             <Field label="Адрес отправителя"><Input value={s.sender_email} onChange={(e) => setS({ ...s, sender_email: e.target.value })} onBlur={() => update({ sender_email: s.sender_email })} className="h-8" /></Field>
             <Field label="Reply-to"><Input value={s.reply_to} onChange={(e) => setS({ ...s, reply_to: e.target.value })} onBlur={() => update({ reply_to: s.reply_to })} className="h-8" /></Field>

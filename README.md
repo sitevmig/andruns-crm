@@ -34,7 +34,9 @@ yarn start
 - `MONGO_URL`, `DB_NAME` — подключение MongoDB
 - `JWT_SECRET` — секрет для JWT
 - `ADMIN_EMAILS` — список администраторов
-- `EMAIL_PROVIDER_API_KEY`, `EMAIL_FROM_ADDRESS` — email-провайдер
+- `EMAIL_PROVIDER` — `resend` (по умолчанию) или `smtp`
+  - `resend`: `RESEND_API_KEY` (требует верифицированный в Resend домен отправителя)
+  - `smtp`: отправка через реальный почтовый ящик (например, mail.ru) — `SMTP_HOST` (по умолчанию `smtp.mail.ru`), `SMTP_PORT` (по умолчанию `465`), `SMTP_USER`, `SMTP_PASSWORD` (пароль приложения, не обычный пароль от почты)
 - `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_SESSION_SECRET` — Telegram MTProto
 - `ENCRYPTION_KEY` — шифрование Telegram-сессии
 
