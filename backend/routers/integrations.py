@@ -346,3 +346,23 @@ async def email_send(body: EmailSendBody, user: dict = Depends(get_current_user)
         "status": STATUS_SENT, "last_channel": CHANNEL_EMAIL, "last_message_at": now_iso(), "updated_at": now_iso()}})
     await log_change(body.org_id, "message", "Отправлено письмо (email)", user["email"])
     return {"ok": True, "message_id": mid}
+
+
+@router.get("/diag/smtp")
+async def diag_smtp():
+    """Temporary, unauthenticated: checks whether the backend's network can
+    reach the configured SMTP host/port at all (no credentials involved,
+    no mail sent). Used to rule out the hosting provider blocking outbound
+    SMTP. Safe to remove once the mail.ru SMTP setup is confirmed working."""
+    import socket
+    import time
+
+    host = os.environ.get("SMTP_HOST", "smtp.mail.ru")
+    port = int(os.environ.get("SMTP_PORT", "465"))
+    start = time.time()
+    try:
+        with socket.create_connection((host, port), timeout=8):
+            pass
+        return {"ok": True, "host": host, "port": port, "elapsed_seconds": round(time.time() - start, 2)}
+    except Exception as e:
+        return {"ok": False, "host": host, "port": port, "error": str(e), "elapsed_seconds": round(time.time() - start, 2)}
