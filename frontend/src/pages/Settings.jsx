@@ -210,16 +210,21 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 function EmailTest() {
   const [to, setTo] = useState("");
+  const [busy, setBusy] = useState(false);
   const send = async () => {
     const trimmed = to.trim();
     if (!EMAIL_RE.test(trimmed)) { toast.error("Укажите корректный email в формате email@example.com"); return; }
-    try { const { data } = await api.post("/email/test", { to: trimmed }); toast.success(`Письмо отправлено, id ${data.message_id}`); }
-    catch (e) { toast.error(apiError(e)); }
+    setBusy(true);
+    try {
+      const { data } = await api.post("/email/test", { to: trimmed }, { timeout: 45000 });
+      toast.success(`Письмо отправлено, id ${data.message_id}`);
+    } catch (e) { toast.error(apiError(e)); }
+    finally { setBusy(false); }
   };
   return (
     <div className="flex gap-2 items-end pt-2 border-t border-border">
       <div className="flex-1"><Label className="text-xs">Тестовое письмо на адрес</Label><Input value={to} onChange={(e) => setTo(e.target.value)} className="h-8 mt-1" data-testid="email-test-to" /></div>
-      <Button size="sm" className="h-8" onClick={send} data-testid="email-test-btn">Отправить тест</Button>
+      <Button size="sm" className="h-8" onClick={send} disabled={busy} data-testid="email-test-btn">{busy ? "Отправка…" : "Отправить тест"}</Button>
     </div>
   );
 }
